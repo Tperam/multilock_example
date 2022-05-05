@@ -1,7 +1,7 @@
 /*
  * @Author: Tperam
  * @Date: 2022-04-28 23:43:03
- * @LastEditTime: 2022-05-05 23:38:46
+ * @LastEditTime: 2022-05-05 23:51:41
  * @LastEditors: Tperam
  * @Description:
  * @FilePath: \multilock_example\lock.go
@@ -12,14 +12,11 @@ package main
 import (
 	"context"
 	"math/rand"
-	"sync"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/tperam/multilock/locker"
 )
-
-var redisLockPool *sync.Pool = &sync.Pool{}
 
 type RedisLock struct {
 	redis    *redis.Client
@@ -52,10 +49,6 @@ func (rl *RedisLock) Unlock() error {
 	//TODO 判断并执行删除，通过lua脚本
 	_, err := rl.redis.Del(context.TODO(), rl.lockname).Result()
 	// 可能还需要做处理，比如判断是因为什么原因导致的
-	rl.lockname = ""
-	rl.lm.ctx = context.TODO()
-	rl.redis = nil
-	redisLockPool.Put(rl)
 	return err
 
 }
@@ -71,11 +64,7 @@ func NewGenerateRedisLock(redis *redis.Client) *GenerateRedisLock {
 }
 
 func (grl *GenerateRedisLock) New(lockname string) (locker.Locker, error) {
-	redisLockInter := redisLockPool.Get()
-	v, ok := redisLockInter.(*RedisLock)
-	if !ok {
-		v = &RedisLock{}
-	}
+	v := &RedisLock{}
 	// 尝试获取
 	lm := lockMessage{}
 	lm.ctx = context.TODO()
