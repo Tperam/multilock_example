@@ -1,7 +1,7 @@
 /*
  * @Author: Tperam
  * @Date: 2022-04-28 23:43:03
- * @LastEditTime: 2022-04-29 00:13:14
+ * @LastEditTime: 2022-05-05 23:38:46
  * @LastEditors: Tperam
  * @Description:
  * @FilePath: \multilock_example\lock.go
@@ -19,16 +19,14 @@ import (
 	"github.com/tperam/multilock/locker"
 )
 
-var lockMessagePool sync.Pool = sync.Pool{}
+var redisLockPool *sync.Pool = &sync.Pool{}
 
 type RedisLock struct {
 	redis    *redis.Client
 	lockname string
-	lm       *lockMessage
+	lm       lockMessage
 }
 
-// no copy
-// 每次用完清除
 type lockMessage struct {
 	ctx context.Context
 	num int
@@ -37,10 +35,11 @@ type lockMessage struct {
 func (rl *RedisLock) Lock() (err error) {
 	var t bool // false
 	for !t {
+		if rl.redis == nil {
+			panic("redis error")
+		}
 		t, err = rl.redis.SetNX(rl.lm.ctx, rl.lockname, rl.lm.num, 1000*time.Millisecond).Result()
 		if err != nil {
-			rl.lm = nil
-			lockMessagePool.Put(rl.lm)
 			return err
 		}
 		// 缓冲
@@ -53,9 +52,10 @@ func (rl *RedisLock) Unlock() error {
 	//TODO 判断并执行删除，通过lua脚本
 	_, err := rl.redis.Del(context.TODO(), rl.lockname).Result()
 	// 可能还需要做处理，比如判断是因为什么原因导致的
-	rl.lm = nil
-	lockMessagePool.Put(rl.lm)
-
+	rl.lockname = ""
+	rl.lm.ctx = context.TODO()
+	rl.redis = nil
+	redisLockPool.Put(rl)
 	return err
 
 }
@@ -64,19 +64,26 @@ type GenerateRedisLock struct {
 	redis *redis.Client
 }
 
-func (grl *GenerateRedisLock) New(lockname string) (locker.Locker, error) {
-	// 尝试获取
-	messageInter := lockMessagePool.Get()
-	v, ok := messageInter.(*lockMessage)
-	if !ok {
-		v = &lockMessage{}
+func NewGenerateRedisLock(redis *redis.Client) *GenerateRedisLock {
+	return &GenerateRedisLock{
+		redis: redis,
 	}
-	v.ctx = nil
-	v.num = rand.Int()
-	var result RedisLock
-	result.redis = grl.redis
-	result.lockname = lockname
-	result.lm = v
+}
 
-	return &result, nil
+func (grl *GenerateRedisLock) New(lockname string) (locker.Locker, error) {
+	redisLockInter := redisLockPool.Get()
+	v, ok := redisLockInter.(*RedisLock)
+	if !ok {
+		v = &RedisLock{}
+	}
+	// 尝试获取
+	lm := lockMessage{}
+	lm.ctx = context.TODO()
+	lm.num = rand.Int()
+
+	v.redis = grl.redis
+	v.lockname = lockname
+	v.lm = lm
+
+	return v, nil
 }
