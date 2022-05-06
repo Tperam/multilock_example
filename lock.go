@@ -1,13 +1,13 @@
 /*
  * @Author: Tperam
  * @Date: 2022-04-28 23:43:03
- * @LastEditTime: 2022-05-05 23:51:41
+ * @LastEditTime: 2022-05-06 22:26:35
  * @LastEditors: Tperam
  * @Description:
  * @FilePath: \multilock_example\lock.go
  */
 
-package main
+package multilock_redis
 
 import (
 	"context"
@@ -15,8 +15,15 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/tperam/multilock"
+	"github.com/tperam/multilock/algorithm"
+	"github.com/tperam/multilock/lockcore"
 	"github.com/tperam/multilock/locker"
 )
+
+func NewRedisMultilock(rdb *redis.Client) *multilock.Multilock {
+	return multilock.NewMultilock(algorithm.NewBubbleSort(), lockcore.NewMapLockCore(locker.NewGenerateMutex(), 10), lockcore.NewMapLockCore(NewGenerateRedisLock(rdb), 10))
+}
 
 type RedisLock struct {
 	redis    *redis.Client

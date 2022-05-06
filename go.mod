@@ -1,4 +1,4 @@
-module github.com/tperam/multilock_example
+module github.com/tperam/multilock_redis
 
 go 1.17
 
